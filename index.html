@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hitster Bingo Wheels</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+            width: 100%;
+        }
+        
+        .split {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+        }
+        
+        .split.left {
+            border-right: 2px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .wheel-container {
+            position: relative;
+            margin-bottom: 30px;
+        }
+        
+        canvas {
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            border-radius: 50%;
+            background: white;
+        }
+        
+        .pointer {
+            position: absolute;
+            top: 50%;
+            right: -20px;
+            transform: translateY(-50%);
+            width: 0;
+            height: 0;
+            border-top: 20px solid transparent;
+            border-bottom: 20px solid transparent;
+            border-right: 40px solid #ff4757;
+            filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.3));
+            z-index: 10;
+        }
+        
+        button {
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .result {
+            margin-top: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            text-align: center;
+            min-height: 60px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        
+        h2 {
+            color: white;
+            margin-bottom: 20px;
+            font-size: 28px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        
+        .modal-overlay.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 60px 80px;
+            border-radius: 20px;
+            font-size: 48px;
+            font-weight: bold;
+            color: #333;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            transform: scale(0.8);
+            transition: transform 0.3s ease;
+        }
+        
+        .modal-overlay.show .modal-content {
+            transform: scale(1);
+        }
+    </style>
+</head>
+<body>
+    <div class="modal-overlay" id="resultModal">
+        <div class="modal-content" id="resultModalContent"></div>
+    </div>
+    
+    <div class="container">
+        <div class="split left">
+            <h2>Categorieën</h2>
+            <div class="wheel-container">
+                <div class="pointer"></div>
+                <canvas id="wheel1" width="500" height="500"></canvas>
+            </div>
+            <button id="spin1">Draai het wiel!</button>
+            <div class="result" id="result1"></div>
+        </div>
+        <div class="split right">
+            <h2>Vraag</h2>
+            <div class="wheel-container">
+                <div class="pointer"></div>
+                <canvas id="wheel2" width="500" height="500"></canvas>
+            </div>
+            <button id="spin2">Draai het wiel!</button>
+            <div class="result" id="result2"></div>
+        </div>
+    </div>
+
+    <script>
+        class Wheel {
+            constructor(canvasId, options, colors) {
+                this.canvas = document.getElementById(canvasId);
+                this.ctx = this.canvas.getContext('2d');
+                this.options = options;
+                this.colors = colors || this.generateColors(options.length);
+                this.rotation = 0;
+                this.isSpinning = false;
+                this.draw();
+            }
+
+            generateColors(count) {
+                const colors = [
+                    '#F4A6A6', '#FFF2A6', '#A6F4C5', '#A6D8F4', '#D7A6F4',
+                    '#FFB6C1', '#FFE4B5', '#B0E0E6', '#DDA0DD', '#F0E68C'
+                ];
+                return colors.slice(0, count);
+            }
+
+            draw() {
+                const canvas = this.canvas;
+                const ctx = this.ctx;
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                const radius = Math.min(centerX, centerY) - 10;
+                const sliceAngle = (2 * Math.PI) / this.options.length;
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate(this.rotation - Math.PI / 2);
+
+                // Draw slices
+                for (let i = 0; i < this.options.length; i++) {
+                    const angle = i * sliceAngle;
+                    
+                    // Draw slice
+                    ctx.beginPath();
+                    ctx.fillStyle = this.colors[i % this.colors.length];
+                    ctx.moveTo(0, 0);
+                    ctx.arc(0, 0, radius, angle, angle + sliceAngle);
+                    ctx.lineTo(0, 0);
+                    ctx.fill();
+                    
+                    // Draw border
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+
+                    // Draw text
+                    ctx.save();
+                    ctx.rotate(angle + sliceAngle / 2);
+                    ctx.textAlign = 'right';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#333';
+                    
+                    // Wrap text if needed
+                    const text = this.options[i];
+                    const words = text.split(' ');
+                    let line = '';
+                    let lines = [];
+                    
+                    // Adjust font size based on number of lines first
+                    ctx.font = 'bold 18px Arial';
+                    const maxWidth = radius * 0.65;
+                    
+                    for (let word of words) {
+                        const testLine = line + word + ' ';
+                        const metrics = ctx.measureText(testLine);
+                        if (metrics.width > maxWidth && line !== '') {
+                            lines.push(line.trim());
+                            line = word + ' ';
+                        } else {
+                            line = testLine;
+                        }
+                    }
+                    lines.push(line.trim());
+                    
+                    // Further reduce font size if too many lines
+                    const fontSize = lines.length > 3 ? 15 : 18;
+                    ctx.font = `bold ${fontSize}px Arial`;
+                    
+                    const lineHeight = fontSize + 6;
+                    const totalHeight = lines.length * lineHeight;
+                    const textX = radius * 0.85;
+                    
+                    lines.forEach((line, index) => {
+                        const y = -(totalHeight / 2) + (index * lineHeight) + lineHeight / 2;
+                        ctx.fillText(line, textX, y);
+                    });
+                    
+                    ctx.restore();
+                }
+
+                // Draw center circle
+                ctx.beginPath();
+                ctx.fillStyle = '#fff';
+                ctx.arc(0, 0, 30, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                ctx.restore();
+            }
+
+            spin(callback) {
+                if (this.isSpinning) return;
+                
+                this.isSpinning = true;
+                const spinDuration = 3000;
+                const startTime = Date.now();
+                const startRotation = this.rotation;
+                
+                // Random final rotation (at least 5 full spins)
+                const minSpins = 5;
+                const maxSpins = 8;
+                const spins = minSpins + Math.random() * (maxSpins - minSpins);
+                const finalRotation = startRotation + (spins * 2 * Math.PI);
+                
+                const animate = () => {
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(elapsed / spinDuration, 1);
+                    
+                    // Ease out cubic
+                    const easeProgress = 1 - Math.pow(1 - progress, 3);
+                    
+                    this.rotation = startRotation + (finalRotation - startRotation) * easeProgress;
+                    this.draw();
+                    
+                    if (progress < 1) {
+                        requestAnimationFrame(animate);
+                    } else {
+                        this.isSpinning = false;
+                        const result = this.getResult();
+                        callback(result);
+                    }
+                };
+                
+                animate();
+            }
+
+            getResult() {
+                const sliceAngle = (2 * Math.PI) / this.options.length;
+                const normalizedRotation = (this.rotation % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+                
+                // The pointer is at the top (12 o'clock), so we need to adjust
+                const adjustedRotation = (2 * Math.PI - normalizedRotation + Math.PI / 2) % (2 * Math.PI);
+                const index = Math.floor(adjustedRotation / sliceAngle) % this.options.length;
+                
+                return {
+                    text: this.options[index],
+                    color: this.colors[index % this.colors.length]
+                };
+            }
+        }
+
+        // Initialize wheels
+        const wheel1 = new Wheel('wheel1', [
+            'Celebrations',
+            'Movies & TV',
+            'Celebrations',
+            'Guilty pleasures',
+            'Rock',
+        ], [
+            '#369aff',  // Blue
+            '#c9c9c9',  // Gray
+            '#369aff',  // Blue
+            '#96f3fd',  // Blue
+            '#ffffff',  // White
+        ]);
+
+        const wheel2 = new Wheel('wheel2', [
+            'Decennium',
+            'Jaar',
+            'Artiest',
+            'Titel',
+            '2/3 goed'
+        ]);
+
+        // Show result modal
+        function showResultModal(result, emoji, color) {
+            const modal = document.getElementById('resultModal');
+            const modalContent = document.getElementById('resultModalContent');
+            
+            modalContent.textContent = `${emoji} ${result}`;
+            
+            // Set background color if provided
+            if (color) {
+                modalContent.style.background = 'white';
+                modalContent.style.color = '#333';
+                // Set overlay to match the color with transparency
+                modal.style.background = `rgba(${parseInt(color.slice(1, 3), 16)}, ${parseInt(color.slice(3, 5), 16)}, ${parseInt(color.slice(5, 7), 16)}, 0.85)`;
+            } else {
+                modalContent.style.background = 'white';
+                modalContent.style.color = '#333';
+                modal.style.background = 'rgba(0, 0, 0, 0.85)';
+            }
+            
+            // Show modal
+            setTimeout(() => {
+                modal.classList.add('show');
+            }, 100);
+            
+            // Hide modal after 2 seconds
+            setTimeout(() => {
+                modal.classList.remove('show');
+            }, 2000);
+        }
+        
+        // Get contrasting text color based on background
+        function getContrastColor(hexColor) {
+            // Convert hex to RGB
+            const r = parseInt(hexColor.slice(1, 3), 16);
+            const g = parseInt(hexColor.slice(3, 5), 16);
+            const b = parseInt(hexColor.slice(5, 7), 16);
+            
+            // Calculate luminance
+            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            
+            // Return black or white based on luminance
+            return luminance > 0.5 ? '#333' : '#fff';
+        }
+        
+        // Spin functions
+        function spinWheel1() {
+            const button = document.getElementById('spin1');
+            const resultDiv = document.getElementById('result1');
+            
+            if (button.disabled || wheel1.isSpinning) return;
+            
+            button.disabled = true;
+            resultDiv.textContent = 'Draaien...';
+            
+            wheel1.spin((result) => {
+                resultDiv.textContent = `🎉 ${result.text}`;
+                showResultModal(result.text, '🎉');
+                button.disabled = false;
+            });
+        }
+        
+        function spinWheel2() {
+            const button = document.getElementById('spin2');
+            const resultDiv = document.getElementById('result2');
+            
+            if (button.disabled || wheel2.isSpinning) return;
+            
+            button.disabled = true;
+            resultDiv.textContent = 'Draaien...';
+            
+            wheel2.spin((result) => {
+                resultDiv.textContent = `🎯 ${result.text}`;
+                showResultModal(result.text, '🎯', result.color);
+                button.disabled = false;
+            });
+        }
+        
+        // Spin buttons
+        document.getElementById('spin1').addEventListener('click', function(e) {
+            e.stopPropagation();
+            spinWheel1();
+        });
+        
+        document.getElementById('spin2').addEventListener('click', function(e) {
+            e.stopPropagation();
+            spinWheel2();
+        });
+        
+        // Keyboard bindings
+        document.addEventListener('click', function(e) {
+            // Left click - spin left wheel
+            spinWheel1();
+        });
+        
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault(); // Prevent context menu
+            // Right click - spin right wheel
+            spinWheel2();
+        });
+    </script>
+</body>
+</html>
